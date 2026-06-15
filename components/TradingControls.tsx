@@ -3,12 +3,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createTrade, closeTrade } from '@/lib/api'
 import {
-  calculateTradeResult,
-  calculateProfitLoss,
-  getLivePnL,
+  generateNextPrice,
   validateStake,
   calculatePotentialPayout,
 } from '@/lib/trading'
+
+// ── Win probability ────────────────────────────────────────────────────────
+// House edge: trader wins 45% of the time, loses 55%.
+// Swap to 0.5 for a fair coin, or lower for a stronger house edge.
+const WIN_PROBABILITY = 0.45
+
+function resolveOutcome(): 'win' | 'loss' {
+  return Math.random() < WIN_PROBABILITY ? 'win' : 'loss'
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface TradingControlsProps {
   userId: string
@@ -16,9 +25,10 @@ interface TradingControlsProps {
   accountType: 'demo' | 'real'
   onTradeCreated?: (result: 'win' | 'loss', pnl: number) => void
   onTradeStarted?: () => void
-  onDirectionChange?: (direction: 'buy' | 'sell' | null) => void 
-  currentPrice?: number | null
+  onDirectionChange?: (direction: 'buy' | 'sell' | null) => void
 }
+
+// ── Component ──────────────────────────────────────────────────────────────
 
 export function TradingControls({
   userId,
@@ -27,7 +37,6 @@ export function TradingControls({
   onTradeCreated,
   onTradeStarted,
   onDirectionChange,
-  currentPrice: propCurrentPrice,
 }: TradingControlsProps) {
   const [stake, setStake] = useState(100)
   const [autosellTime, setAutosellTime] = useState(30)
@@ -35,28 +44,82 @@ export function TradingControls({
   const [activeDirection, setActiveDirection] = useState<'buy' | 'sell' | null>(null)
   const [loading, setLoading] = useState(false)
   const [entryPrice, setEntryPrice] = useState<number | null>(null)
+  const [displayPrice, setDisplayPrice] = useState<number>(0)
   const [tradeId, setTradeId] = useState<string | null>(null)
   const [profitLoss, setProfitLoss] = useState<number | null>(null)
   const [tradeResult, setTradeResult] = useState<'win' | 'loss' | null>(null)
   const [closing, setClosing] = useState(false)
   const [stakeError, setStakeError] = useState<string | null>(null)
+  const [isWinning, setIsWinning] = useState<boolean | null>(null)
 
-  const displayCurrentPrice = propCurrentPrice ?? null
+  // Multiplier is fixed at 1.85 for now (can be wired to VolatilitySnapshot later)
+  const MULTIPLIER = 1.85
 
-  // ✅ Live P&L using getLivePnL
-   useEffect(() => {
+  // ── Internal price ticker ────────────────────────────────────────────────
+  // Runs independently of the chart; drives entryPrice and the live P&L display.
+
+  const priceRef = useRef<number>(0)
+
+  useEffect(() => {
+    const ticker = setInterval(() => {
+      const next = generateNextPrice(priceRef.current)
+      priceRef.current = next
+      setDisplayPrice(next)
+
+      // While a trade is active, update the live "is winning?" indicator
+      // based on current simulated price vs entry (visual only — outcome
+      // is still determined by resolveOutcome() when the timer expires).
+      setIsWinning((prev) => {
+        // only update when trade is live
+        if (entryPrice === null || closing) return prev
+        if (activeDirection === 'buy') return next > entryPrice
+        if (activeDirection === 'sell') return next < entryPrice
+        return prev
+      })
+    }, 300)
+
+    return () => clearInterval(ticker)
+  }, [entryPrice, activeDirection, closing])
+
+  // ── Notify parent of direction changes ───────────────────────────────────
+
+  useEffect(() => {
     onDirectionChange?.(activeDirection)
   }, [activeDirection, onDirectionChange])
 
-  // Validate stake on change
+  // ── Stake validation ─────────────────────────────────────────────────────
+
   useEffect(() => {
     if (activeDirection) return
     const validation = validateStake(stake, balance)
     setStakeError(validation.valid ? null : validation.error ?? null)
   }, [stake, balance, activeDirection])
 
-  const resetTrade = useCallback((result: 'win' | 'loss', pnl: number) => {
+  // ── Settle the trade ─────────────────────────────────────────────────────
+
+  const settleTrade = useCallback(async () => {
+    if (!activeDirection || !tradeId || closing) return
+    setClosing(true)
+
+    const result = resolveOutcome()
+    const pnl =
+      result === 'win'
+        ? parseFloat((stake * (MULTIPLIER - 1)).toFixed(2))
+        : -stake
+
+    // Use whatever price the internal ticker is at as the "exit price" for
+    // the API record — it's cosmetic since outcome is already decided.
+    const exitPrice = priceRef.current
+
+    try {
+      await closeTrade(tradeId, exitPrice, result)
+    } catch (err) {
+      console.error('closeTrade API error:', err)
+    }
+
+    setProfitLoss(pnl)
     setTradeResult(result)
+
     setTimeout(() => {
       setActiveDirection(null)
       setTimeLeft(0)
@@ -64,66 +127,24 @@ export function TradingControls({
       setTradeId(null)
       setProfitLoss(null)
       setTradeResult(null)
+      setIsWinning(null)
       setClosing(false)
       onTradeCreated?.(result, pnl)
     }, 2000)
-  }, [onTradeCreated])
+  }, [activeDirection, tradeId, closing, stake, onTradeCreated])
 
-  // Core close trade logic — addLiveFeed handled inside closeTrade in api.ts
-const closeTradeFn = useCallback(async (exitPrice: number) => {
-  console.log('closeTradeFn: called', { activeDirection, entryPrice, tradeId, closing, exitPrice })
-  if (!activeDirection || !entryPrice || !tradeId || closing) {
-    console.log('closeTradeFn: guard blocked execution')
-    return
-  }
-  setClosing(true)
-  console.log('closeTradeFn: setClosing(true) called')
+  // ── Timer countdown ──────────────────────────────────────────────────────
 
-  try {
-    const result = calculateTradeResult(entryPrice, exitPrice, activeDirection)
-    const pnl = calculateProfitLoss(entryPrice, exitPrice, activeDirection, stake)
-    console.log('closeTradeFn: computed', { result, pnl })
+  const settleRef = useRef(settleTrade)
+  useEffect(() => { settleRef.current = settleTrade }, [settleTrade])
 
-    console.log('closeTradeFn: awaiting closeTrade API...')
-    await closeTrade(tradeId, exitPrice, result)
-    console.log('closeTradeFn: closeTrade API resolved')
-
-    resetTrade(result, pnl)
-    console.log('closeTradeFn: resetTrade called')
-  } catch (error) {
-    console.error('closeTradeFn: caught error', error)
-    setClosing(false)
-    setActiveDirection(null)
-  }
-}, [activeDirection, entryPrice, tradeId, closing, stake, resetTrade])
-
-  // Auto-sell when timer hits 0
-  const handleAutoSell = useCallback(async () => {
-    if (!displayCurrentPrice) return
-    await closeTradeFn(displayCurrentPrice)
-  }, [displayCurrentPrice, closeTradeFn])
-
-  // Manual stop
-  const handleManualClose = async () => {
-    if (!displayCurrentPrice || closing) return
-    await closeTradeFn(displayCurrentPrice)
-  }
-
-  // Keep a ref to the latest handleAutoSell so the interval always
-  // calls the freshest version without needing to be recreated
-  const handleAutoSellRef = useRef(handleAutoSell)
-  useEffect(() => {
-    handleAutoSellRef.current = handleAutoSell
-  }, [handleAutoSell])
-
-  // Timer countdown — only depends on activeDirection now
   useEffect(() => {
     if (!activeDirection) return
 
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          handleAutoSellRef.current()
+          settleRef.current()
           return 0
         }
         return prev - 1
@@ -133,7 +154,15 @@ const closeTradeFn = useCallback(async (exitPrice: number) => {
     return () => clearInterval(timer)
   }, [activeDirection])
 
-  // ✅ Uses live chart price as entry
+  // ── Manual early close ───────────────────────────────────────────────────
+
+  const handleManualClose = async () => {
+    if (closing) return
+    await settleTrade()
+  }
+
+  // ── Open a trade ─────────────────────────────────────────────────────────
+
   const handleTrade = async (direction: 'buy' | 'sell') => {
     if (loading || activeDirection) return
 
@@ -148,14 +177,7 @@ const closeTradeFn = useCallback(async (exitPrice: number) => {
     setStakeError(null)
 
     try {
-      // ✅ Use current live chart price as entry (not a generated one)
-      const entry = displayCurrentPrice ?? 0
-      if (entry === 0) {
-        console.error('No live price available')
-        setLoading(false)
-        return
-      }
-
+      const entry = priceRef.current
       setEntryPrice(entry)
       setActiveDirection(direction)
       setTimeLeft(autosellTime)
@@ -183,10 +205,12 @@ const closeTradeFn = useCallback(async (exitPrice: number) => {
     }
   }
 
-  const isWinning = profitLoss !== null && profitLoss > 0
-  const isLosing = profitLoss !== null && profitLoss < 0
+  // ── Derived display values ───────────────────────────────────────────────
+
   const timerProgress = autosellTime > 0 ? (timeLeft / autosellTime) * 100 : 0
-  const payout = calculatePotentialPayout(stake)
+  const payout = calculatePotentialPayout(stake, MULTIPLIER)
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="bg-surface border border-border rounded-lg p-4 md:p-6 space-y-4">
@@ -216,31 +240,34 @@ const closeTradeFn = useCallback(async (exitPrice: number) => {
       )}
 
       {/* Live P&L Display during active trade */}
-      {activeDirection && profitLoss !== null && !tradeResult && (
+      {activeDirection && !tradeResult && (
         <div className={`border rounded-lg p-4 text-center transition-all duration-300 ${
-          isWinning
+          isWinning === true
             ? 'bg-primary/10 border-primary'
-            : isLosing
+            : isWinning === false
             ? 'bg-destructive/10 border-destructive'
             : 'bg-surface border-border'
         }`}>
           <div className="text-xs text-muted uppercase tracking-wider font-semibold mb-1">
-            LIVE PROFIT / LOSS
+            LIVE PRICE
           </div>
-          <div className={`text-4xl font-bold font-mono transition-colors ${
-            isWinning ? 'text-primary' : isLosing ? 'text-destructive' : 'text-foreground'
-          }`}>
-            {profitLoss >= 0 ? '+' : ''}{profitLoss.toFixed(2)} KES
+          <div className="text-4xl font-bold font-mono text-foreground">
+            {displayPrice.toFixed(4)}
           </div>
           <div className="text-xs text-muted mt-2 space-x-2">
             <span>Entry: <span className="text-foreground">{entryPrice?.toFixed(4)}</span></span>
             <span>|</span>
-            <span>Now: <span className="text-foreground">{displayCurrentPrice?.toFixed(4)}</span></span>
+            <span>Direction: <span className="text-foreground uppercase">{activeDirection}</span></span>
             <span>|</span>
             <span>Max win: <span className="text-primary">+{payout.profit.toFixed(2)} KES</span></span>
           </div>
-          <div className={`text-xs font-semibold mt-2 ${isWinning ? 'text-primary' : 'text-destructive'}`}>
-            {isWinning ? '📈 Currently WINNING' : '📉 Currently LOSING'}
+          {isWinning !== null && (
+            <div className={`text-xs font-semibold mt-2 ${isWinning ? 'text-primary' : 'text-destructive'}`}>
+              {isWinning ? '📈 Currently WINNING' : '📉 Currently LOSING'}
+            </div>
+          )}
+          <div className="text-xs text-muted mt-1 italic">
+            * Final result is determined when timer expires
           </div>
         </div>
       )}
@@ -354,7 +381,7 @@ const closeTradeFn = useCallback(async (exitPrice: number) => {
             disabled={loading || !!stakeError}
             className={`py-4 font-bold rounded-lg text-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
               accountType === 'demo'
-                ? 'bg-yellow-500 hover:bg-yellow-400 text-black'
+                ? 'bg-green-500 hover:bg-green-500 text-black'
                 : 'bg-primary hover:bg-green-600 text-black'
             }`}
           >
@@ -365,7 +392,7 @@ const closeTradeFn = useCallback(async (exitPrice: number) => {
             disabled={loading || !!stakeError}
             className={`py-4 font-bold rounded-lg text-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
               accountType === 'demo'
-                ? 'bg-purple-600 hover:bg-purple-500 text-white'
+                ? 'bg-red-600 hover:bg-red-500 text-white'
                 : 'bg-destructive hover:bg-red-600 text-white'
             }`}
           >

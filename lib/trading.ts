@@ -1,16 +1,170 @@
-// Generate oscillating price data — prices between -3 and +3 like the screenshots
-export function generateChartData(length: number = 50, startPrice: number = 0) {
-  const data = []
+const BASE_PRICE = 0.0
+
+export interface ChartPoint {
+  time: number
+  price: number
+  baseline: number
+  timestamp: Date
+}
+
+// ── Volatility ─────────────────────────────────────────────────────────────
+// Volatility regime derived from the live chart data.
+// Low    → chart is calm, small price swings
+// Medium → chart is moving moderately
+// High   → chart is spiking hard in either direction
+
+export type VolatilityRegime = 'low' | 'medium' | 'high'
+
+export interface VolatilitySnapshot {
+  regime: VolatilityRegime
+  value: number          // raw stddev of recent prices
+  multiplier: number     // payout multiplier adjusted for regime
+  minStake: number       // minimum stake for this regime
+  maxStake: number       // maximum stake for this regime
+  label: string          // UI display label e.g. "High Volatility"
+  description: string    // short hint shown to the trader
+}
+
+/**
+ * Compute volatility from the most recent `window` points of the chart.
+ * Returns a VolatilitySnapshot with the regime, adjusted multiplier,
+ * and stake limits — all derived from how much the chart is moving.
+ *
+ * Call this on every new tick and pass the result into your trade UI.
+ */
+export function getVolatilitySnapshot(
+  chartData: ChartPoint[],
+  window: number = 10
+): VolatilitySnapshot {
+  if (chartData.length < 2) {
+    return {
+      regime: 'low',
+      value: 0,
+      multiplier: 1.75,
+      minStake: 50,
+      maxStake: 10000,
+      label: 'Low Volatility',
+      description: 'Market is calm. Lower payouts, lower risk.',
+    }
+  }
+
+  // Slice the last `window` points
+  const recent = chartData.slice(-window).map(p => p.price)
+
+  // Standard deviation of recent prices
+  const mean = recent.reduce((s, v) => s + v, 0) / recent.length
+  const variance = recent.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / recent.length
+  const stddev = Math.sqrt(variance)
+
+  // Classify into regime
+  // Chart prices range roughly -2.9 to +2.9, so stddev thresholds:
+  //   < 0.25  → low
+  //   0.25–0.7 → medium
+  //   > 0.7   → high
+  let regime: VolatilityRegime
+  let multiplier: number
+  let minStake: number
+  let maxStake: number
+  let label: string
+  let description: string
+
+  if (stddev < 0.25) {
+    regime = 'low'
+    multiplier = 1.75   // lower reward — chart barely moves
+    minStake = 50
+    maxStake = 10000
+    label = 'Low Volatility'
+    description = 'Market is calm. Lower payouts, lower risk.'
+  } else if (stddev < 0.7) {
+    regime = 'medium'
+    multiplier = 1.85   // standard reward
+    minStake = 50
+    maxStake = 10000
+    label = 'Medium Volatility'
+    description = 'Normal market conditions.'
+  } else {
+    regime = 'high'
+    multiplier = 2.1    // higher reward — chart is spiking
+    minStake = 50
+    maxStake = 5000     // tighter cap during high volatility
+    label = 'High Volatility'
+    description = 'Market is spiking. Higher payouts but riskier.'
+  }
+
+  return {
+    regime,
+    value: parseFloat(stddev.toFixed(4)),
+    multiplier,
+    minStake,
+    maxStake,
+    label,
+    description,
+  }
+}
+
+/**
+ * Returns the dominant direction of the chart over the last `window` ticks.
+ * Useful for giving the trader a visual cue (trending up / down / flat).
+ */
+export function getChartTrend(
+  chartData: ChartPoint[],
+  window: number = 10
+): 'up' | 'down' | 'flat' {
+  if (chartData.length < 2) return 'flat'
+  const recent = chartData.slice(-window)
+  const first = recent[0].price
+  const last = recent[recent.length - 1].price
+  const delta = last - first
+  if (Math.abs(delta) < 0.05) return 'flat'
+  return delta > 0 ? 'up' : 'down'
+}
+
+// ── Chart generation ───────────────────────────────────────────────────────
+
+// Balanced random walk that oscillates around the baseline (0) with
+// occasional spikes up/down, mean-reverting so it never drifts away.
+function nextStep(price: number, momentum: number): { price: number; momentum: number } {
+  const spikeTrigger = Math.random()
+
+  // Bias: the further price is from baseline, the more likely the next
+  // spike pulls it back toward zero.
+  const bias = Math.max(-0.25, Math.min(0.25, -price * 0.15))
+  const upThreshold = 0.6 - bias
+  const downThreshold = 0.4 - bias
+
+  let newMomentum = momentum
+  if (spikeTrigger > upThreshold) {
+    newMomentum = (Math.random() * 1.0 + 0.35)
+  } else if (spikeTrigger < downThreshold) {
+    newMomentum = -(Math.random() * 1.0 + 0.35)
+  }
+
+  // Decay momentum fast and apply mean reversion
+  newMomentum *= 0.5
+  const reversion = -price * 0.15
+  const noise = (Math.random() - 0.5) * 0.1
+  const rawPrice = Math.max(-2.9, Math.min(2.9, price + newMomentum + reversion + noise))
+
+  // Light exponential smoothing toward the new value
+  const smoothed = parseFloat((price + (rawPrice - price) * 0.7).toFixed(4))
+
+  return { price: smoothed, momentum: newMomentum }
+}
+
+export function generateChartData(length = 50, startPrice: number = BASE_PRICE): ChartPoint[] {
+  const data: ChartPoint[] = []
   let price = startPrice
-  const volatility = 0.15
+  let momentum = 0
 
   for (let i = 0; i < length; i++) {
-    const change = (Math.random() - 0.48) * volatility
-    price = Math.max(-2.9, Math.min(2.9, price + change))
+    const step = nextStep(price, momentum)
+    price = step.price
+    momentum = step.momentum
 
     data.push({
       time: i,
-      price: parseFloat(price.toFixed(4)),
+      price,
+      baseline: BASE_PRICE,
       timestamp: new Date(Date.now() - (length - i) * 1000),
     })
   }
@@ -18,32 +172,31 @@ export function generateChartData(length: number = 50, startPrice: number = 0) {
   return data
 }
 
-// Generate next price in real-time
+// Note: `trend` param kept for backwards compatibility but unused.
 export function generateNextPrice(lastPrice: number, trend: number = 0): number {
-  const volatility = 0.15
-  const change = (Math.random() - 0.48) * volatility + trend
-  const price = Math.max(-2.9, Math.min(2.9, lastPrice + change))
-  return parseFloat(price.toFixed(4))
+  const step = nextStep(lastPrice, 0)
+  return step.price
 }
 
-// Win/loss based on direction vs price movement
+// ── Trade result helpers ───────────────────────────────────────────────────
+
 export function calculateTradeResult(
   entryPrice: number,
   exitPrice: number,
   direction: 'buy' | 'sell'
 ): 'win' | 'loss' {
   if (direction === 'buy') {
-    // BUY wins if price went UP from entry
     return exitPrice > entryPrice ? 'win' : 'loss'
   } else {
-    // SELL wins if price went DOWN from entry
     return exitPrice < entryPrice ? 'win' : 'loss'
   }
 }
 
-// Fixed multiplier P&L — binary options style
-// Win: +85% of stake (1.85x multiplier)
-// Loss: -100% of stake
+/**
+ * Final P&L when the user manually closes a trade.
+ * Pass in the VolatilitySnapshot.multiplier so payout reflects
+ * the volatility regime that was active when the trade was opened.
+ */
 export function calculateProfitLoss(
   entryPrice: number,
   exitPrice: number,
@@ -59,7 +212,10 @@ export function calculateProfitLoss(
   }
 }
 
-// Get live P&L during active trade
+/**
+ * Live P&L while the trade is still open (called on every chart tick).
+ * Pass in the same multiplier that was captured at trade entry.
+ */
 export function getLivePnL(
   entryPrice: number,
   currentPrice: number,
@@ -77,14 +233,11 @@ export function getLivePnL(
       ? parseFloat((stake * (multiplier - 1)).toFixed(2))
       : -stake
 
-  return {
-    pnl,
-    isWinning: result === 'win',
-    result,
-  }
+  return { pnl, isWinning: result === 'win', result }
 }
 
-// Format currency in KES
+// ── Formatting ─────────────────────────────────────────────────────────────
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-KE', {
     style: 'currency',
@@ -94,21 +247,22 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
-// Format price to 4 decimal places
 export function formatPrice(price: number): string {
   return price.toFixed(4)
 }
 
-// Calculate percentage change between two values
-export function calculatePercentageChange(
-  oldValue: number,
-  newValue: number
-): number {
+export function calculatePercentageChange(oldValue: number, newValue: number): number {
   if (oldValue === 0) return 0
   return ((newValue - oldValue) / Math.abs(oldValue)) * 100
 }
 
-// Validate stake amount
+// ── Stake validation ───────────────────────────────────────────────────────
+
+/**
+ * Validate a stake against the user's balance AND the current volatility
+ * regime's stake limits. Pass in a VolatilitySnapshot to enforce
+ * regime-specific min/max limits.
+ */
 export function validateStake(
   stake: number,
   balance: number,
@@ -133,7 +287,25 @@ export function validateStake(
   return { valid: true }
 }
 
-// Calculate potential payout before trade
+/**
+ * Convenience wrapper — validates stake using the limits from the
+ * current volatility snapshot rather than hardcoded defaults.
+ */
+export function validateStakeForVolatility(
+  stake: number,
+  balance: number,
+  snapshot: VolatilitySnapshot
+): { valid: boolean; error?: string } {
+  return validateStake(stake, balance, snapshot.minStake, snapshot.maxStake)
+}
+
+// ── Payout preview ─────────────────────────────────────────────────────────
+
+/**
+ * Show the trader what they stand to win/lose before placing a trade.
+ * Pass in VolatilitySnapshot.multiplier so the preview is accurate
+ * for the current market regime.
+ */
 export function calculatePotentialPayout(
   stake: number,
   multiplier: number = 1.85
@@ -144,3 +316,5 @@ export function calculatePotentialPayout(
     loss: -stake,
   }
 }
+
+export const CHART_BASE_PRICE = BASE_PRICE

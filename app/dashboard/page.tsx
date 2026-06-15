@@ -37,7 +37,6 @@ export default function DashboardPage() {
   const [profileLoading, setProfileLoading] = useState(true)
   const [accountType, setAccountType] = useState<'demo' | 'real'>('demo')
   const [isTradeActive, setIsTradeActive] = useState(false)
-  const [currentPrice, setCurrentPrice] = useState<number | null>(null)
   const [activeDirection, setActiveDirection] = useState<'buy' | 'sell' | null>(null)
   const [isGuest, setIsGuest] = useState(false)
   const router = useRouter()
@@ -45,17 +44,12 @@ export default function DashboardPage() {
 
   const { demoBalance, realBalance, loading: balanceLoading } = useBalance()
 
-  const handlePriceUpdate = useCallback((price: number) => {
-    setCurrentPrice(price)
-  }, [])
-
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
 
         if (!session) {
-          // Guest mode — no redirect, show demo dashboard
           setProfile(GUEST_PROFILE)
           setAccountType('demo')
           setIsGuest(true)
@@ -107,10 +101,8 @@ export default function DashboardPage() {
 
   const handleTradeCreated = useCallback(() => {
     setIsTradeActive(false)
-    setCurrentPrice(null)
   }, [])
 
-  // Guests always see the demo balance; authenticated users use the realtime hook
   const activeBalance = isGuest
     ? GUEST_DEMO_BALANCE
     : accountType === 'demo'
@@ -217,14 +209,13 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Chart */}
+            {/* Chart — purely decorative, runs its own ticker */}
             <TradingChart
               direction={activeDirection ?? 'buy'}
               isTradeActive={isTradeActive}
-              onPriceUpdate={handlePriceUpdate}
             />
 
-            {/* Controls — guests see a login prompt overlay instead */}
+            {/* Controls */}
             {isGuest ? (
               <div className="rounded-lg border border-border bg-surface p-6 text-center space-y-3">
                 <p className="text-muted text-sm">Create a free account to start trading</p>
@@ -251,7 +242,6 @@ export default function DashboardPage() {
                 onTradeCreated={handleTradeCreated}
                 onTradeStarted={() => setIsTradeActive(true)}
                 onDirectionChange={setActiveDirection}
-                currentPrice={currentPrice}
               />
             )}
 
