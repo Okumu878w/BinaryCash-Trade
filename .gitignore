@@ -1,0 +1,29 @@
+# v0 sandbox internal files
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+.snowflake/
+.v0-trash/
+.vercel/
+
+# Environment variables
+.env*.local
+
+# Common ignores
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+
+# TypeScript Next.js types (auto-generated)
+next-env.d.ts
+node_modules
+.next/
+.DS_Store
+# Auto-generated docs (not needed in repo)
+COMPLETION_REPORT.md
+INDEX.md
+PROJECT_SUMMARY.md
+QUICKSTART.md
+TRADING_LOGIC.md
+UI_DESIGN_SUMMARY.md
+SETUP.md
