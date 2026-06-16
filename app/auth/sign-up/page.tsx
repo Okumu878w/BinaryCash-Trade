@@ -60,7 +60,7 @@ export default function SignUpPage() {
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary mb-4">
             <span className="text-background font-bold text-lg">B</span>
           </div>
-          <h1 className="text-3xl font-bold text-foreground">BinaryCash 254</h1>
+          <h1 className="text-3xl font-bold text-foreground">BinaryCash Trade</h1>
           <p className="text-text-muted mt-2">Create Your Trading Account</p>
         </div>
 
