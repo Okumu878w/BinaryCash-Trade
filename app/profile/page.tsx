@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { LicenseFooter } from '@/components/LicenseFooter'
 
 interface Profile {
   id: string
@@ -275,6 +276,7 @@ export default function ProfilePage() {
             Update Password
           </button>
         </div>
+        <LicenseFooter variant="full" />
       </div>
     </div>
   )

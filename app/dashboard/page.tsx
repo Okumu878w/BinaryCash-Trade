@@ -9,6 +9,7 @@ import { DashboardHeader } from '@/components/DashboardHeader'
 import { DashboardSidebar } from '@/components/DashboardSidebar'
 import { TradingChart } from '@/components/TradingChart'
 import { TradingControls } from '@/components/TradingControls'
+import { LicenseFooter } from '@/components/LicenseFooter'
 
 interface Profile {
   id: string
@@ -133,7 +134,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       <DashboardHeader
         username={profile.username}
         balance={activeBalance}
@@ -145,22 +146,25 @@ export default function DashboardPage() {
         <DashboardSidebar activities={[]} />
 
         <div className="flex-1 flex flex-col overflow-auto">
-          <div className="flex-1 p-4 md:p-6 space-y-4 overflow-auto">
+          <div className="flex-1 p-3 md:p-4 space-y-3 overflow-auto">
 
             {/* Guest sign-up banner */}
             {isGuest && (
-              <div className="rounded-lg px-4 py-3 text-sm font-medium flex items-center justify-between bg-blue-500/10 border border-blue-500/30 text-blue-400">
-                <span>👋 You're viewing a demo — sign up to trade with real KES</span>
-                <div className="flex gap-2 ml-4">
+              <div className="rounded-lg px-3 py-2 text-xs font-medium flex items-center justify-between bg-blue-500/10 border border-blue-500/30 text-blue-400">
+                <span className="hidden sm:inline">
+                  👋 You're viewing a demo — sign up to trade with real KES
+                </span>
+                <span className="sm:hidden">👋 Demo mode — sign up to trade</span>
+                <div className="flex gap-2 ml-3 shrink-0">
                   <Link
                     href="/auth/login"
-                    className="text-xs bg-blue-500/20 hover:bg-blue-500/30 px-3 py-1 rounded-md whitespace-nowrap transition-colors"
+                    className="text-xs bg-blue-500/20 hover:bg-blue-500/30 px-2 py-1 rounded transition-colors"
                   >
                     Log in
                   </Link>
                   <Link
                     href="/auth/sign-up"
-                    className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md whitespace-nowrap transition-colors"
+                    className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-2 py-1 rounded transition-colors"
                   >
                     Sign up
                   </Link>
@@ -168,54 +172,18 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Account Type Banner */}
-            <div className={`rounded-lg px-4 py-2 text-sm font-medium flex items-center justify-between ${
-              accountType === 'demo'
-                ? 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
-                : 'bg-primary/10 border border-primary/30 text-primary'
-            }`}>
-              <span>
-                {accountType === 'demo'
-                  ? '🟡 Demo Account — Trades use virtual KES 200 balance'
-                  : '🟢 Real Account — Trades use your deposited balance'}
-              </span>
-              <button
-                onClick={handleToggleAccount}
-                className="text-xs underline hover:no-underline ml-4 whitespace-nowrap"
-              >
-                {isGuest ? 'Sign in to switch' : `Switch to ${accountType === 'demo' ? 'Real' : 'Demo'}`}
-              </button>
-            </div>
+           
 
-            {/* Stats Row Desktop */}
-            <div className="hidden lg:grid lg:grid-cols-4 gap-4">
-              <div className="bg-surface border border-border rounded-lg p-3">
-                <div className="text-xs text-muted uppercase tracking-wider mb-1">24H HIGH</div>
-                <div className="text-lg font-bold text-primary">2.5576</div>
-              </div>
-              <div className="bg-surface border border-border rounded-lg p-3">
-                <div className="text-xs text-muted uppercase tracking-wider mb-1">24H LOW</div>
-                <div className="text-lg font-bold text-destructive">-2.4000</div>
-              </div>
-              <div className="bg-surface border border-border rounded-lg p-3">
-                <div className="text-xs text-muted uppercase tracking-wider mb-1">SPREAD</div>
-                <div className="text-lg font-bold text-foreground">0.0012</div>
-              </div>
-              <div className="bg-surface border border-border rounded-lg p-3">
-                <div className="text-xs text-muted uppercase tracking-wider mb-1">BALANCE</div>
-                <div className="text-lg font-bold text-primary">
-                  KES {activeBalance.toFixed(2)}
-                </div>
-              </div>
-            </div>
-
-            {/* Chart — purely decorative, runs its own ticker */}
+            {/* Chart — stats (24H HIGH/LOW/SPREAD) are now inside the chart header */}
             <TradingChart
               direction={activeDirection ?? 'buy'}
               isTradeActive={isTradeActive}
+              high24h={2.4878}
+              low24h={-2.4000}
+              spread={0.0012}
             />
 
-            {/* Controls */}
+            {/* Trading Controls */}
             {isGuest ? (
               <div className="rounded-lg border border-border bg-surface p-6 text-center space-y-3">
                 <p className="text-muted text-sm">Create a free account to start trading</p>
@@ -249,14 +217,19 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Desktop footer */}
+      <div className="hidden md:flex items-center justify-center border-t border-border bg-surface py-2">
+        <LicenseFooter variant="compact" />
+      </div>
+
       {/* Mobile Bottom Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-border">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-surface border-t border-border z-50">
         <div className="flex justify-around items-center">
           <Link
             href="/dashboard"
             className="flex-1 flex flex-col items-center justify-center py-3 text-primary border-t-2 border-primary text-xs font-medium gap-1"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
             </svg>
@@ -266,7 +239,7 @@ export default function DashboardPage() {
             href="/deposit"
             className="flex-1 flex flex-col items-center justify-center py-3 text-muted text-xs font-medium gap-1"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             DEPOSIT
@@ -275,7 +248,7 @@ export default function DashboardPage() {
             href="/history"
             className="flex-1 flex flex-col items-center justify-center py-3 text-muted text-xs font-medium gap-1"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -285,16 +258,18 @@ export default function DashboardPage() {
             href="/profile"
             className="flex-1 flex flex-col items-center justify-center py-3 text-muted text-xs font-medium gap-1"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
             PROFILE
           </Link>
         </div>
+        <LicenseFooter variant="compact" className="py-1.5 border-t border-border/50" />
       </nav>
 
-      <div className="md:hidden h-20" />
+      {/* Spacer for mobile bottom nav */}
+      <div className="md:hidden h-28" />
     </div>
   )
 }

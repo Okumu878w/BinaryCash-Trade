@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useOnlineCount } from '@/lib/hooks/useOnlineCount'
 
 interface DashboardHeaderProps {
   username: string
@@ -25,11 +26,12 @@ export function DashboardHeader({
     router.push('/auth/login')
   }
 
-  const stats = {
-    volume24h: 2400000,
-    tradersOnline: 1281,
-    totalPayouts: 18700000,
-  }
+  const tradersOnline = useOnlineCount(1200, 1300)
+
+const stats = {
+  volume24h: 2400000,
+  totalPayouts: 18700000,
+}
 
   const AccountToggle = () => (
     <button
@@ -63,7 +65,7 @@ export function DashboardHeader({
           </div>
           <div>
             <div className="text-muted uppercase tracking-wide">TRADERS ONLINE</div>
-            <div className="text-foreground font-bold">{stats.tradersOnline.toLocaleString()}</div>
+            <div className="text-foreground font-bold">{tradersOnline.toLocaleString()}</div>
           </div>
           <div>
             <div className="text-muted uppercase tracking-wide">TOTAL PAYOUTS</div>
@@ -150,7 +152,7 @@ export function DashboardHeader({
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-black font-bold text-sm">B</span>
           </div>
-          <span className="font-semibold text-foreground text-sm">BinaryCash 254</span>
+          <span className="font-semibold text-foreground text-sm">BinaryCash Trade</span>
         </div>
 
         {/* Right: Toggle + Balance + Deposit + Withdraw */}

@@ -41,7 +41,7 @@ export function getVolatilitySnapshot(
       regime: 'low',
       value: 0,
       multiplier: 1.75,
-      minStake: 50,
+      minStake: 200,
       maxStake: 10000,
       label: 'Low Volatility',
       description: 'Market is calm. Lower payouts, lower risk.',
@@ -71,21 +71,21 @@ export function getVolatilitySnapshot(
   if (stddev < 0.25) {
     regime = 'low'
     multiplier = 1.75   // lower reward — chart barely moves
-    minStake = 50
+    minStake = 200
     maxStake = 10000
     label = 'Low Volatility'
     description = 'Market is calm. Lower payouts, lower risk.'
   } else if (stddev < 0.7) {
     regime = 'medium'
     multiplier = 1.85   // standard reward
-    minStake = 50
+    minStake = 200
     maxStake = 10000
     label = 'Medium Volatility'
     description = 'Normal market conditions.'
   } else {
     regime = 'high'
     multiplier = 2.1    // higher reward — chart is spiking
-    minStake = 50
+    minStake = 200
     maxStake = 5000     // tighter cap during high volatility
     label = 'High Volatility'
     description = 'Market is spiking. Higher payouts but riskier.'
@@ -133,16 +133,14 @@ function nextStep(price: number, momentum: number): { price: number; momentum: n
   const downThreshold = 0.4 - bias
 
   let newMomentum = momentum
-  if (spikeTrigger > upThreshold) {
-    newMomentum = (Math.random() * 1.0 + 0.35)
-  } else if (spikeTrigger < downThreshold) {
-    newMomentum = -(Math.random() * 1.0 + 0.35)
-  }
-
-  // Decay momentum fast and apply mean reversion
-  newMomentum *= 0.5
+ if (spikeTrigger > upThreshold) {
+  newMomentum = (Math.random() * 2.2 + 0.8)
+} else if (spikeTrigger < downThreshold) {
+  newMomentum = -(Math.random() * 2.2 + 0.8)
+}
+newMomentum *= 0.65
   const reversion = -price * 0.15
-  const noise = (Math.random() - 0.5) * 0.1
+  const noise = (Math.random() - 0.5) * 0.3
   const rawPrice = Math.max(-2.9, Math.min(2.9, price + newMomentum + reversion + noise))
 
   // Light exponential smoothing toward the new value
@@ -266,7 +264,7 @@ export function calculatePercentageChange(oldValue: number, newValue: number): n
 export function validateStake(
   stake: number,
   balance: number,
-  minStake: number = 50,
+  minStake: number = 200,
   maxStake: number = 10000
 ): { valid: boolean; error?: string } {
   if (isNaN(stake) || stake <= 0) {

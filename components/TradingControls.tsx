@@ -38,7 +38,7 @@ export function TradingControls({
   onTradeStarted,
   onDirectionChange,
 }: TradingControlsProps) {
-  const [stake, setStake] = useState(100)
+  const [stake, setStake] = useState(200)
   const [autosellTime, setAutosellTime] = useState(30)
   const [timeLeft, setTimeLeft] = useState(0)
   const [activeDirection, setActiveDirection] = useState<'buy' | 'sell' | null>(null)
@@ -281,7 +281,7 @@ export function TradingControls({
               STAKE AMOUNT
             </label>
             <div className="grid grid-cols-4 gap-2">
-              {[50, 100, 200, 500].map((amount) => (
+              {[200, 5000, 1000, 2000].map((amount) => (
                 <button
                   key={amount}
                   onClick={() => setStake(amount)}
