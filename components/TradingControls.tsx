@@ -281,7 +281,7 @@ export function TradingControls({
               STAKE AMOUNT
             </label>
             <div className="grid grid-cols-4 gap-2">
-              {[200, 5000, 1000, 2000].map((amount) => (
+              {[200, 500, 1000, 2000].map((amount) => (
                 <button
                   key={amount}
                   onClick={() => setStake(amount)}
